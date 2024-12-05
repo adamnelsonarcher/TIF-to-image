@@ -5,8 +5,7 @@ import rasterio
 from dem_to_mesh import create_mesh_from_dem
 from classify_terrain import classify_and_color_mesh
 from render_scene import render_scene
-from agent_view import draw_agent_on_dem  # Import the function
-import open3d as o3d
+from agent_view import draw_agent_on_dem 
 import os
 
 def generate_horizon_views(mesh, dem_length_km, num_views=8):

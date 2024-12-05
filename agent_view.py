@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from view_config import FOV_ANGLE, VIEW_DISTANCE_RATIO
 
 def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filename, dem_length_km):
     print(f"\nDrawing agent on DEM for {filename}")
@@ -40,13 +41,12 @@ def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filen
         
         if direction_norm > 0:
             direction = direction / direction_norm
-            fov_distance = dem_length_km * 1000 * 0.2  # 20% of DEM width in meters
-            fov_angle = np.pi / 6  # 30 degrees
+            fov_distance = dem_length_km * 1000 * VIEW_DISTANCE_RATIO
             
-            # Calculate FOV lines
+            # Calculate FOV lines using shared angle
             base_angle = np.arctan2(direction[1], direction[0])
-            left_angle = base_angle + fov_angle
-            right_angle = base_angle - fov_angle
+            left_angle = base_angle + FOV_ANGLE/2  # Half the total FOV angle
+            right_angle = base_angle - FOV_ANGLE/2
             
             # Plot FOV lines
             for angle in [left_angle, right_angle]:
