@@ -9,7 +9,7 @@ import open3d as o3d
 import matplotlib.pyplot as plt
 import os
 
-def generate_horizon_views(mesh, num_views=8):
+def generate_horizon_views(mesh, dem_length_km, num_views=8):
     print("\n=== Generating Horizon Views ===")
     
     # Get mesh bounds
@@ -17,19 +17,19 @@ def generate_horizon_views(mesh, num_views=8):
     center = bbox.get_center()
     bbox_size = bbox.get_max_bound() - bbox.get_min_bound()
     
-    # Calculate observer parameters
-    ground_height = bbox.get_min_bound()[2] + 5.0
-    observer_radius = 5.0
-    look_distance = max(bbox_size[0], bbox_size[1]) * 0.6
+    # Calculate observer parameters (in km)
+    ground_height = bbox.get_min_bound()[2] + 0.001  # 1m above ground
+    observer_radius = 0.05  # Fixed 50m radius
+    look_distance = dem_length_km * 0.6  # Scale look distance based on DEM size
     
     print(f"Observer setup:")
     print(f"Ground height: {ground_height:.2f}")
-    print(f"Observer radius: {observer_radius:.2f}")
-    print(f"Look distance: {look_distance:.2f}")
+    print(f"Observer radius: {observer_radius:.2f} km")
+    print(f"Look distance: {look_distance:.2f} km")
     
     images = []
-    positions = []  # Store observer positions
-    targets = []    # Store look targets
+    positions = []
+    targets = []
     
     for i in range(num_views):
         angle = (2 * np.pi * i) / num_views
@@ -45,7 +45,7 @@ def generate_horizon_views(mesh, num_views=8):
         look_target = np.array([
             center[0] + look_distance * np.cos(angle),
             center[1] + look_distance * np.sin(angle),
-            ground_height + look_distance * 0.05
+            ground_height + look_distance * 0.05  # Slight upward angle
         ])
         
         print(f"\nProcessing view {i+1}/{num_views}")
@@ -53,7 +53,8 @@ def generate_horizon_views(mesh, num_views=8):
         print(f"Looking towards: {look_target}")
         
         try:
-            image = render_scene(mesh, observer_position, look_target)
+            # Pass dem_length_km to render_scene
+            image = render_scene(mesh, observer_position, look_target, dem_length_km)
             print(f"Successfully rendered view {i+1}")
             images.append(image)
             positions.append(observer_position)
@@ -80,7 +81,7 @@ def save_image(image, filename):
         print(f"Error saving image: {str(e)}")
         return False
 
-def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filename):
+def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filename, dem_length_km):
     print(f"\nDrawing agent on DEM for {filename}")
     try:
         fig, ax = plt.subplots(figsize=(12, 8))
@@ -103,6 +104,7 @@ def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filen
         real_target_y = transform[5] + (1 - look_target[1] / 1000.0) * transform[4] * dem_data.shape[0]
         
         # Debug prints
+        print(f"DEM length: {dem_length_km} km")
         print(f"Normalized observer position: ({observer_position[0]:.2f}, {observer_position[1]:.2f})")
         print(f"Real-world observer position: ({real_observer_x:.2f}, {real_observer_y:.2f})")
         
@@ -117,7 +119,7 @@ def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filen
         
         if direction_norm > 0:
             direction = direction / direction_norm
-            fov_distance = (extent[1] - extent[0]) * 0.2  # 20% of DEM width
+            fov_distance = dem_length_km * 1000 * 0.2  # 20% of DEM width in meters
             fov_angle = np.pi / 6  # 30 degrees
             
             # Calculate FOV lines
@@ -146,7 +148,7 @@ def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filen
         
         # Add legend and title
         ax.legend()
-        ax.set_title('Agent Position and Field of View')
+        ax.set_title(f'Agent Position and Field of View (DEM width: {dem_length_km} km)')
         
         # Ensure proper axis limits
         ax.set_xlim(extent[0], extent[1])
@@ -165,6 +167,9 @@ def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filen
 
 def main():
     try:
+        # Specify the real-world horizontal length of the DEM in kilometers
+        dem_length_km = 15.0  # Length of the DEM in kilometers
+        
         # Create output directories
         output_dir = 'horizon_views'
         views_with_agents_dir = 'views_with_agents'
@@ -181,6 +186,7 @@ def main():
             transform = dem_dataset.transform
             print(f"DEM data shape: {dem_data.shape}")
             print(f"DEM elevation range: {dem_data.min():.2f} to {dem_data.max():.2f}")
+            print(f"DEM horizontal length: {dem_length_km} km")
 
         # Create and process mesh
         print("\nCreating mesh...")
@@ -197,7 +203,7 @@ def main():
             
         # Generate views
         print("\nGenerating views...")
-        images, positions, targets = generate_horizon_views(mesh)
+        images, positions, targets = generate_horizon_views(mesh, dem_length_km)
         
         if not images:
             raise ValueError("No images were generated")
@@ -211,7 +217,7 @@ def main():
             
             # Create agent view
             agent_file = f'agent_view_{i+1}.png'
-            draw_agent_on_dem(dem_data, transform, pos, target, agent_file)
+            draw_agent_on_dem(dem_data, transform, pos, target, agent_file, dem_length_km)
 
     except Exception as e:
         print(f"\nAn error occurred: {str(e)}")

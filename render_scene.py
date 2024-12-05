@@ -4,7 +4,7 @@ import numpy as np
 import pyrender
 import trimesh
 
-def render_scene(mesh, rover_position, camera_target, image_width=1024, image_height=768):
+def render_scene(mesh, rover_position, camera_target, dem_length_km, image_width=1024, image_height=768):
     print("\n=== Setting up Pyrender Scene ===")
     
     try:
@@ -26,12 +26,12 @@ def render_scene(mesh, rover_position, camera_target, image_width=1024, image_he
         scene.add(mesh)
         
         # Calculate camera parameters
-        camera = pyrender.PerspectiveCamera(
-            yfov=np.pi/4.0,  # Reduced FOV for less distortion
-            aspectRatio=float(image_width)/float(image_height),
-            znear=0.1,  # Increased near plane to avoid clipping
-            zfar=1000.0  # Increased far plane for better horizon view
-        )
+        yfov = np.pi / 3.0  # Field of view
+        aspect_ratio = float(image_width) / float(image_height)
+        znear = 0.1  # Near clipping plane
+        zfar = dem_length_km * 1000  # Far clipping plane based on DEM size
+        
+        camera = pyrender.PerspectiveCamera(yfov=yfov, aspectRatio=aspect_ratio, znear=znear, zfar=zfar)
         
         # Set up camera pose
         look_dir = camera_target - rover_position
