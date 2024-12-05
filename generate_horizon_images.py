@@ -9,7 +9,7 @@ import open3d as o3d
 import matplotlib.pyplot as plt
 import os
 
-def generate_horizon_views(mesh, num_views=8):
+def generate_horizon_views(mesh, dem_data, transform, num_views=8):
     print("\n=== Generating Horizon Views ===")
     
     # Get mesh bounds
@@ -18,15 +18,10 @@ def generate_horizon_views(mesh, num_views=8):
     bbox_size = bbox.get_max_bound() - bbox.get_min_bound()
     
     # Calculate observer parameters based on real-world meters
-    ground_height = bbox.get_min_bound()[2] # 2 meters above ground
-    observer_radius = 500.0  # 500 meter radius from center
-    look_distance = 2000.0  # Look 2km into the distance
-    
-    # Adjust vertical look angle for more natural perspective
-    look_height = ground_height + 1  # observer is 1 meter above ground
+    observer_radius = 10.0  # 5 meter radius for observer to rotate and move
+    look_distance = 80.0  # Look 80m into the distance
     
     print(f"Observer setup:")
-    print(f"Ground height: {ground_height:.2f}")
     print(f"Observer radius: {observer_radius:.2f}")
     print(f"Look distance: {look_distance:.2f}")
     
@@ -36,19 +31,25 @@ def generate_horizon_views(mesh, num_views=8):
     
     for i in range(num_views):
         angle = (2 * np.pi * i) / num_views
+
+        x_offset = -3500
+        y_offset = 1000
         
-        # Observer position
-        observer_position = np.array([
-            center[0] + observer_radius * np.cos(angle),
-            center[1] + observer_radius * np.sin(angle),
-            ground_height
-        ])
+        x_pos = center[0] + x_offset + observer_radius * np.cos(angle)
+        y_pos = center[1] + y_offset + observer_radius * np.sin(angle)
+
+        # Now determine ground elevation at (x_pos, y_pos)
+        col, row = rasterio.transform.rowcol(transform, x_pos, y_pos)
+        ground_elevation = dem_data[row, col]
+
+        observer_position = np.array([x_pos, y_pos, ground_elevation + 20])
+
         
         # Look target
         look_target = np.array([
-            center[0] + look_distance * np.cos(angle),
-            center[1] + look_distance * np.sin(angle),
-            look_height-1
+            center[0]+ x_offset + look_distance * np.cos(angle),
+            center[1] + y_offset + look_distance * np.sin(angle),
+            ground_elevation - 2.0 # Adjust look height to be consistent
         ])
         
         print(f"\nProcessing view {i+1}/{num_views}")
@@ -71,8 +72,6 @@ def save_image(image, filename):
     print(f"\nSaving image to {filename}")
     try:
         import imageio
-        # Flip the image vertically
-        image = np.flipud(image)
         
         # Construct full path
         filepath = os.path.join('horizon_views', filename)
@@ -198,7 +197,7 @@ def main():
             
         # Generate views
         print("\nGenerating views...")
-        images, positions, targets = generate_horizon_views(mesh)
+        images, positions, targets = generate_horizon_views(mesh, dem_data, transform)
         
         if not images:
             raise ValueError("No images were generated")

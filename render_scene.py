@@ -29,8 +29,8 @@ def render_scene(mesh, rover_position, camera_target, image_width=1024, image_he
         camera = pyrender.PerspectiveCamera(
             yfov=np.pi/3.0,  # Wider FOV (60 degrees)
             aspectRatio=float(image_width)/float(image_height),
-            znear=1.0,  # Adjusted for real-world scale
-            zfar=10000.0  # Increased for real-world distances
+            znear=1,  # Adjusted for real-world scale
+            zfar=100000.0  # Increased for real-world distances
         )
         
         # Set up camera pose
@@ -50,8 +50,7 @@ def render_scene(mesh, rover_position, camera_target, image_width=1024, image_he
         
         scene.add(camera, pose=pose)
         
-        # Add multiple lights for better illumination
-        # Main directional light (sun)
+        # Main light (sun)
         direct_l = pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=5.0)
         scene.add(direct_l, pose=pose)
         

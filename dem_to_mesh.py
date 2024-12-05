@@ -22,11 +22,9 @@ def create_mesh_from_dem(dem_data, transform, downsample_factor=1):
     rows, cols = dem_data.shape
     print(f"Downsampled DEM shape: {dem_data.shape}")
     
-    # Create coordinate grids
-    print("Creating coordinate grids...")
-    x_coords, y_coords = np.meshgrid(np.arange(cols), np.arange(rows))
-    x_coords, y_coords = rasterio.transform.xy(transform, x_coords * downsample_factor, 
-                                             y_coords * downsample_factor)
+    row_indices, col_indices = np.meshgrid(np.arange(rows), np.arange(cols), indexing='ij')
+    x_coords, y_coords = rasterio.transform.xy(transform, row_indices, col_indices)
+
     x_coords = np.array(x_coords)
     y_coords = np.array(y_coords)
     
@@ -34,6 +32,8 @@ def create_mesh_from_dem(dem_data, transform, downsample_factor=1):
     x = x_coords.flatten()
     y = y_coords.flatten()
     z = dem_data.flatten()
+    # z = z - np.min(z)  # Now the lowest elevation is 0 m.
+
     
     print(f"Coordinate ranges (meters):")
     print(f"X: {np.min(x):.2f} to {np.max(x):.2f}")
