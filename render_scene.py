@@ -8,12 +8,10 @@ def render_scene(mesh, rover_position, camera_target, image_width=1024, image_he
     print("\n=== Setting up Pyrender Scene ===")
     
     try:
-        # Convert Open3D mesh to trimesh
+        # Convert mesh to trimesh
         vertices = np.asarray(mesh.vertices)
         faces = np.asarray(mesh.triangles)
         colors = np.asarray(mesh.vertex_colors)
-        
-        # Create trimesh mesh
         tri_mesh = trimesh.Trimesh(vertices=vertices, 
                                  faces=faces, 
                                  vertex_colors=colors)
@@ -25,15 +23,15 @@ def render_scene(mesh, rover_position, camera_target, image_width=1024, image_he
         scene = pyrender.Scene(bg_color=[0, 0, 0], ambient_light=[0.2, 0.2, 0.2])
         scene.add(mesh)
         
-        # Calculate camera parameters
+        #  camera parameters
         camera = pyrender.PerspectiveCamera(
-            yfov=np.pi/3.0,  # Wider FOV (60 degrees)
+            yfov=np.pi/3.0,
             aspectRatio=float(image_width)/float(image_height),
-            znear=1,  # Adjusted for real-world scale
-            zfar=100000.0  # Increased for real-world distances
+            znear=1,  
+            zfar=100000.0  
         )
         
-        # Set up camera pose
+        # camera pose
         look_dir = camera_target - rover_position
         up_vector = np.array([0, 0, 1])
         
@@ -54,10 +52,10 @@ def render_scene(mesh, rover_position, camera_target, image_width=1024, image_he
         direct_l = pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=5.0)
         scene.add(direct_l, pose=pose)
         
-        # Create renderer
+        # renderer
         r = pyrender.OffscreenRenderer(image_width, image_height)
         
-        # Render scene
+        # Render
         color, depth = r.render(scene)
         
         r.delete()

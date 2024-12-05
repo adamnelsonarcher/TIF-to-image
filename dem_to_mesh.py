@@ -28,11 +28,10 @@ def create_mesh_from_dem(dem_data, transform, downsample_factor=1):
     x_coords = np.array(x_coords)
     y_coords = np.array(y_coords)
     
-    # Scale coordinates to reasonable size
     x = x_coords.flatten()
     y = y_coords.flatten()
     z = dem_data.flatten()
-    # z = z - np.min(z)  # Now the lowest elevation is 0 m.
+    # z = z - np.min(z)  # uncomment to force the lowest elevation to be 0m
 
     
     print(f"Coordinate ranges (meters):")
@@ -40,7 +39,7 @@ def create_mesh_from_dem(dem_data, transform, downsample_factor=1):
     print(f"Y: {np.min(y):.2f} to {np.max(y):.2f}")
     print(f"Z: {np.min(z):.2f} to {np.max(z):.2f}")
     
-    # Use coordinates directly without normalization
+    # Using coordinates directly without normalization
     vertices = np.column_stack((x, y, z))
     
     print("Creating faces...")
@@ -66,7 +65,6 @@ def create_mesh_from_dem(dem_data, transform, downsample_factor=1):
         mesh.vertices = o3d.utility.Vector3dVector(vertices)
         print("Added vertices to mesh")
         
-        # Verify triangle indices are valid
         max_vertex_idx = len(vertices) - 1
         valid_faces = []
         for face in faces:
@@ -81,11 +79,12 @@ def create_mesh_from_dem(dem_data, transform, downsample_factor=1):
         print(f"Face array dtype: {valid_faces.dtype}")
         
         # Convert to int32 (Open3D expects 32-bit integers)
+        # This is not needed anymore, as I moved away from using open3d. But I'm leaving it here for now.
         print("Converting faces to int32...")
         valid_faces = valid_faces.astype(np.int32)
         print(f"New dtype: {valid_faces.dtype}")
         
-        # Verify data is contiguous
+        # Verify contiguous
         if not valid_faces.flags['C_CONTIGUOUS']:
             print("Making array contiguous...")
             valid_faces = np.ascontiguousarray(valid_faces)
@@ -114,15 +113,14 @@ def create_mesh_from_dem(dem_data, transform, downsample_factor=1):
         mesh.compute_vertex_normals()
         print("Computed normals")
         
-        # Remove degenerate triangles
+        # Remove ::
+        # degenerate triangles
+        # duplicated vertices
+        # unreferenced vertices
         mesh.remove_degenerate_triangles()
         print("Removed degenerate triangles")
-        
-        # Remove duplicated vertices
         mesh.remove_duplicated_vertices()
         print("Removed duplicated vertices")
-        
-        # Remove unreferenced vertices
         mesh.remove_unreferenced_vertices()
         print("Removed unreferenced vertices")
         
