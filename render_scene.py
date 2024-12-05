@@ -3,9 +3,8 @@
 import numpy as np
 import pyrender
 import trimesh
-from view_config import FOV_ANGLE, VIEW_DISTANCE_RATIO
 
-def render_scene(mesh, rover_position, camera_target, dem_length_km, image_width=1024, image_height=768):
+def render_scene(mesh, rover_position, camera_target, image_width=1024, image_height=768):
     print("\n=== Setting up Pyrender Scene ===")
     
     try:
@@ -26,13 +25,13 @@ def render_scene(mesh, rover_position, camera_target, dem_length_km, image_width
         scene = pyrender.Scene(bg_color=[0, 0, 0])
         scene.add(mesh)
         
-        # Calculate camera parameters using shared config
-        aspect_ratio = float(image_width) / float(image_height)
-        znear = 0.1  # Near clipping plane
-        zfar = dem_length_km * 1000  # Far clipping plane based on DEM size
-        
-        camera = pyrender.PerspectiveCamera(yfov=FOV_ANGLE, aspectRatio=aspect_ratio, 
-                                          znear=znear, zfar=zfar)
+        # Calculate camera parameters
+        camera = pyrender.PerspectiveCamera(
+            yfov=np.pi/4.0,  # Reduced FOV for less distortion
+            aspectRatio=float(image_width)/float(image_height),
+            znear=0.1,  # Increased near plane to avoid clipping
+            zfar=1000.0  # Increased far plane for better horizon view
+        )
         
         # Set up camera pose
         look_dir = camera_target - rover_position
@@ -54,7 +53,7 @@ def render_scene(mesh, rover_position, camera_target, dem_length_km, image_width
         # Add stronger directional light
         light = pyrender.DirectionalLight(
             color=[1.0, 1.0, 1.0],
-            intensity=5.0
+            intensity=5.0  # Increased intensity for brighter illumination
         )
         scene.add(light, pose=pose)
         

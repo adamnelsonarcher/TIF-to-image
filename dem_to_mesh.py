@@ -4,7 +4,7 @@ import numpy as np
 import open3d as o3d
 import rasterio
 
-def create_mesh_from_dem(dem_data, transform, downsample_factor=2):
+def create_mesh_from_dem(dem_data, transform, downsample_factor=4):
     print("\n=== DEM to Mesh Conversion ===")
     print(f"Input DEM shape: {dem_data.shape}")
     print(f"Downsample factor: {downsample_factor}")
