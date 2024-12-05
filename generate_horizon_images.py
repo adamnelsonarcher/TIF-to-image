@@ -17,10 +17,13 @@ def generate_horizon_views(mesh, num_views=8):
     center = bbox.get_center()
     bbox_size = bbox.get_max_bound() - bbox.get_min_bound()
     
-    # Calculate observer parameters
-    ground_height = bbox.get_min_bound()[2] + 5.0
-    observer_radius = 5.0
-    look_distance = max(bbox_size[0], bbox_size[1]) * 0.6
+    # Calculate observer parameters based on real-world meters
+    ground_height = bbox.get_min_bound()[2] + 2.0  # 2 meters above ground
+    observer_radius = 50.0  # 50 meter radius from center
+    look_distance = 1000.0  # Look 1km into the distance
+    
+    # Adjust vertical look angle for more natural perspective
+    look_height = ground_height + 1  # Average human eye height (1.7m)
     
     print(f"Observer setup:")
     print(f"Ground height: {ground_height:.2f}")
@@ -45,7 +48,7 @@ def generate_horizon_views(mesh, num_views=8):
         look_target = np.array([
             center[0] + look_distance * np.cos(angle),
             center[1] + look_distance * np.sin(angle),
-            ground_height + look_distance * 0.05
+            look_height
         ])
         
         print(f"\nProcessing view {i+1}/{num_views}")
@@ -85,22 +88,21 @@ def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filen
     try:
         fig, ax = plt.subplots(figsize=(12, 8))
         
-        # Plot the DEM with proper normalization
-        dem_normalized = (dem_data - dem_data.min()) / (dem_data.max() - dem_data.min())
+        # Plot the DEM without normalization
         extent = [
             transform[2], 
             transform[2] + transform[0] * dem_data.shape[1],
             transform[5] + transform[4] * dem_data.shape[0], 
             transform[5]
         ]
-        ax.imshow(dem_normalized, cmap='gray', extent=extent)
+        ax.imshow(dem_data, cmap='gray', extent=extent)
         
         # Convert normalized coordinates back to real-world coordinates
-        real_observer_x = transform[2] + (observer_position[0] / 1000.0) * transform[0] * dem_data.shape[1]
-        real_observer_y = transform[5] + (1 - observer_position[1] / 1000.0) * transform[4] * dem_data.shape[0]
+        real_observer_x = observer_position[0]
+        real_observer_y = observer_position[1]
         
-        real_target_x = transform[2] + (look_target[0] / 1000.0) * transform[0] * dem_data.shape[1]
-        real_target_y = transform[5] + (1 - look_target[1] / 1000.0) * transform[4] * dem_data.shape[0]
+        real_target_x = look_target[0]
+        real_target_y = look_target[1]
         
         # Debug prints
         print(f"Normalized observer position: ({observer_position[0]:.2f}, {observer_position[1]:.2f})")

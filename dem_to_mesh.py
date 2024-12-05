@@ -36,24 +36,13 @@ def create_mesh_from_dem(dem_data, transform, downsample_factor=4):
     y = y_coords.flatten()
     z = dem_data.flatten()
     
-    print(f"Coordinate ranges before normalization:")
+    print(f"Coordinate ranges (meters):")
     print(f"X: {np.min(x):.2f} to {np.max(x):.2f}")
     print(f"Y: {np.min(y):.2f} to {np.max(y):.2f}")
     print(f"Z: {np.min(z):.2f} to {np.max(z):.2f}")
     
-    # Normalize coordinates to prevent numerical issues
-    x = (x - np.min(x)) / (np.max(x) - np.min(x)) * 1000
-    y = (y - np.min(y)) / (np.max(y) - np.min(y)) * 1000
-    z = (z - np.min(z)) / (np.max(z) - np.min(z)) * 100
-    
-    print(f"Coordinate ranges after normalization:")
-    print(f"X: {np.min(x):.2f} to {np.max(x):.2f}")
-    print(f"Y: {np.min(y):.2f} to {np.max(y):.2f}")
-    print(f"Z: {np.min(z):.2f} to {np.max(z):.2f}")
-    
-    print("Creating vertices...")
+    # Use coordinates directly without normalization
     vertices = np.column_stack((x, y, z))
-    print(f"Number of vertices: {len(vertices)}")
     
     print("Creating faces...")
     faces = []

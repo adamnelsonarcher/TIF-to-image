@@ -21,16 +21,16 @@ def render_scene(mesh, rover_position, camera_target, image_width=1024, image_he
         # Create pyrender mesh
         mesh = pyrender.Mesh.from_trimesh(tri_mesh)
         
-        # Create scene
-        scene = pyrender.Scene(bg_color=[0, 0, 0])
+        # Create scene with ambient light
+        scene = pyrender.Scene(bg_color=[0, 0, 0], ambient_light=[0.2, 0.2, 0.2])
         scene.add(mesh)
         
         # Calculate camera parameters
         camera = pyrender.PerspectiveCamera(
-            yfov=np.pi/4.0,  # Reduced FOV for less distortion
+            yfov=np.pi/3.0,  # Wider FOV (60 degrees)
             aspectRatio=float(image_width)/float(image_height),
-            znear=0.1,  # Increased near plane to avoid clipping
-            zfar=1000.0  # Increased far plane for better horizon view
+            znear=1.0,  # Adjusted for real-world scale
+            zfar=10000.0  # Increased for real-world distances
         )
         
         # Set up camera pose
@@ -50,12 +50,15 @@ def render_scene(mesh, rover_position, camera_target, image_width=1024, image_he
         
         scene.add(camera, pose=pose)
         
-        # Add stronger directional light
-        light = pyrender.DirectionalLight(
-            color=[1.0, 1.0, 1.0],
-            intensity=5.0  # Increased intensity for brighter illumination
-        )
-        scene.add(light, pose=pose)
+        # Add multiple lights for better illumination
+        # Main directional light (sun)
+        direct_l = pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=10.0)
+        scene.add(direct_l, pose=pose)
+        
+        # Additional directional light from above
+        light_pose = np.eye(4)
+        light_pose[:3, 3] = rover_position + np.array([0, 0, 1000])  # Light from above
+        scene.add(direct_l, pose=light_pose)
         
         # Create renderer
         r = pyrender.OffscreenRenderer(image_width, image_height)
