@@ -52,13 +52,8 @@ def render_scene(mesh, rover_position, camera_target, image_width=1024, image_he
         
         # Add multiple lights for better illumination
         # Main directional light (sun)
-        direct_l = pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=10.0)
+        direct_l = pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=5.0)
         scene.add(direct_l, pose=pose)
-        
-        # Additional directional light from above
-        light_pose = np.eye(4)
-        light_pose[:3, 3] = rover_position + np.array([0, 0, 1000])  # Light from above
-        scene.add(direct_l, pose=light_pose)
         
         # Create renderer
         r = pyrender.OffscreenRenderer(image_width, image_height)

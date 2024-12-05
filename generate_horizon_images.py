@@ -18,12 +18,12 @@ def generate_horizon_views(mesh, num_views=8):
     bbox_size = bbox.get_max_bound() - bbox.get_min_bound()
     
     # Calculate observer parameters based on real-world meters
-    ground_height = bbox.get_min_bound()[2] + 2.0  # 2 meters above ground
-    observer_radius = 50.0  # 50 meter radius from center
-    look_distance = 1000.0  # Look 1km into the distance
+    ground_height = bbox.get_min_bound()[2] # 2 meters above ground
+    observer_radius = 500.0  # 500 meter radius from center
+    look_distance = 2000.0  # Look 2km into the distance
     
     # Adjust vertical look angle for more natural perspective
-    look_height = ground_height + 1  # Average human eye height (1.7m)
+    look_height = ground_height + 1  # observer is 1 meter above ground
     
     print(f"Observer setup:")
     print(f"Ground height: {ground_height:.2f}")
@@ -48,7 +48,7 @@ def generate_horizon_views(mesh, num_views=8):
         look_target = np.array([
             center[0] + look_distance * np.cos(angle),
             center[1] + look_distance * np.sin(angle),
-            look_height
+            look_height-1
         ])
         
         print(f"\nProcessing view {i+1}/{num_views}")
@@ -105,8 +105,7 @@ def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filen
         real_target_y = look_target[1]
         
         # Debug prints
-        print(f"Normalized observer position: ({observer_position[0]:.2f}, {observer_position[1]:.2f})")
-        print(f"Real-world observer position: ({real_observer_x:.2f}, {real_observer_y:.2f})")
+        print(f"Coordinate observer position: ({real_observer_x:.2f}, {real_observer_y:.2f})")
         
         # Plot the agent's position
         ax.scatter(real_observer_x, real_observer_y, 
