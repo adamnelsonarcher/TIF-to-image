@@ -13,8 +13,8 @@ def render_scene(mesh, rover_position, camera_target, image_width=1024, image_he
         faces = np.asarray(mesh.triangles)
         colors = np.asarray(mesh.vertex_colors)
         tri_mesh = trimesh.Trimesh(vertices=vertices, 
-                                 faces=faces, 
-                                 vertex_colors=colors)
+                                faces=faces, 
+                                vertex_colors=colors)
         
         # Create pyrender mesh
         mesh = pyrender.Mesh.from_trimesh(tri_mesh)
@@ -25,10 +25,10 @@ def render_scene(mesh, rover_position, camera_target, image_width=1024, image_he
         
         #  camera parameters
         camera = pyrender.PerspectiveCamera(
-            yfov=np.pi/3.0,
+            yfov=np.pi/4.0,
             aspectRatio=float(image_width)/float(image_height),
-            znear=1,  
-            zfar=100000.0  
+            znear=0.1,
+            zfar=100000.0
         )
         
         # camera pose

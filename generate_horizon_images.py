@@ -17,13 +17,21 @@ def generate_horizon_views(mesh, dem_data, transform, num_views=8):
     center = bbox.get_center()
     bbox_size = bbox.get_max_bound() - bbox.get_min_bound()
     
-    # Calculate observer parameters based on real-world meters
-    observer_radius = 10.0  # 5 meter radius for observer to rotate around
-    look_distance = 80.0  # Look at point 80m into the distance
+    # Calculate observer parameters as percentages of terrain size
+    terrain_width = bbox_size[0]  # X-axis span
+    observer_radius = 10  # 10m circle to generate in
+    look_distance = terrain_width * 0.05    # 5% of terrain width
+    observer_height = bbox_size[2] * 0.002  # 0.2% of terrain height
     
-    print(f"Observer setup:")
-    print(f"Observer radius: {observer_radius:.2f}")
-    print(f"Look distance: {look_distance:.2f}")
+    print(f"Terrain dimensions (meters):")
+    print(f"Width: {terrain_width:.2f}")
+    print(f"Depth: {bbox_size[1]:.2f}")
+    print(f"Height: {bbox_size[2]:.2f}")
+    
+    print(f"\nObserver setup (relative to terrain):")
+    print(f"Observer radius: {observer_radius:.2f}m ({(observer_radius/terrain_width*100):.1f}% of width)")
+    print(f"Look distance: {look_distance:.2f}m ({(look_distance/terrain_width*100):.1f}% of width)")
+    print(f"Observer height: {observer_height:.2f}m ({(observer_height/bbox_size[2]*100):.1f}% of height)")
     
     images = []
     positions = []  
@@ -31,25 +39,23 @@ def generate_horizon_views(mesh, dem_data, transform, num_views=8):
     
     for i in range(num_views):
         angle = (2 * np.pi * i) / num_views
-
-        x_offset = -3500
-        y_offset = 1000
         
-        x_pos = center[0] + x_offset + observer_radius * np.cos(angle)
-        y_pos = center[1] + y_offset + observer_radius * np.sin(angle)
+        x_pos = center[0] + observer_radius * np.cos(angle)
+        y_pos = center[1] + observer_radius * np.sin(angle)
 
-        # determine ground elevation at (x_pos, y_pos)
+        # Determine ground elevation at observer position
         col, row = rasterio.transform.rowcol(transform, x_pos, y_pos)
+        row = np.clip(row, 0, dem_data.shape[0] - 1)
+        col = np.clip(col, 0, dem_data.shape[1] - 1)
         ground_elevation = dem_data[row, col]
 
-        observer_position = np.array([x_pos, y_pos, ground_elevation + 20])
-
+        observer_position = np.array([x_pos, y_pos, ground_elevation + observer_height])
         
-        # Look target
+        # Look target (point to look at)
         look_target = np.array([
-            center[0]+ x_offset + look_distance * np.cos(angle),
-            center[1] + y_offset + look_distance * np.sin(angle),
-            ground_elevation - 2.0 # Adjust look height to be consistent
+            center[0] + look_distance * np.cos(angle),
+            center[1] + look_distance * np.sin(angle),
+            ground_elevation  # Look at ground level
         ])
         
         print(f"\nProcessing view {i+1}/{num_views}")
@@ -107,7 +113,7 @@ def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filen
         
         # Plot the agent's position for the top-down view
         ax.scatter(real_observer_x, real_observer_y, 
-                  color='red', s=100, marker='o', label='Agent')
+                color='red', s=100, marker='o', label='Agent')
         direction = np.array([real_target_x - real_observer_x, 
                             real_target_y - real_observer_y])
         direction_norm = np.linalg.norm(direction)
@@ -129,16 +135,16 @@ def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filen
                     real_observer_y + fov_distance * np.sin(angle)
                 ])
                 ax.plot([real_observer_x, end_point[0]],
-                       [real_observer_y, end_point[1]],
-                       'r--', linewidth=2)
+                    [real_observer_y, end_point[1]],
+                    'r--', linewidth=2)
             
             center_end = np.array([
                 real_observer_x + fov_distance * direction[0],
                 real_observer_y + fov_distance * direction[1]
             ])
             ax.plot([real_observer_x, center_end[0]],
-                   [real_observer_y, center_end[1]],
-                   'r-', linewidth=1)
+                [real_observer_y, center_end[1]],
+                'r-', linewidth=1)
         
         ax.legend()
         ax.set_title('Agent Position and Field of View')
@@ -155,6 +161,7 @@ def draw_agent_on_dem(dem_data, transform, observer_position, look_target, filen
         print(f"Error drawing agent on DEM: {str(e)}")
         import traceback
         traceback.print_exc()
+
 
 def main():
     try:
