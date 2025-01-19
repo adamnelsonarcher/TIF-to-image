@@ -112,50 +112,54 @@ def launch_interactive_viewer(mesh, initial_position=None, initial_target=None, 
             print(f"Warning: No intersection found at ({x}, {y})")
             return 0
     
-    # Place observer at center
+    # Place observer at center and add ground marker
     center_height = get_ground_height(0, 0)
-    eye_height = 1.7  # meters
-    observer_position = (0, -100, center_height + eye_height)
+    eye_height = 1.7  # meters above ground
+    observer_position = (0, 0, center_height + eye_height)
+    
+    # Add white sphere at observer's ground position
+    observer_ground_marker = pv.Sphere(radius=2, center=np.array([0, 0, center_height]))
+    plotter.add_mesh(observer_ground_marker, color='white')
+    
+    # Add vertical line through observer position
+    observer_line = pv.Line((0, 0, center_height - 100), (0, 0, center_height + 100))
+    plotter.add_mesh(observer_line, color='white', line_width=3)
     
     # Add 100m reference markers
-    for x, y in [(100, 0), (-100, 0), (0, 100), (0, -100)]:
+    for x, y in [(100, 0), (-100, 0), (0, 100), (0, -100)]:  # These are now relative to (0,0)
         height = get_ground_height(x, y)
         # Create a small sphere at the intersection point
-        sphere = pv.Sphere(radius=1, center=np.array([x, y, height]))  # Use numpy array for center
+        sphere = pv.Sphere(radius=1, center=np.array([x, y, height]))
         plotter.add_mesh(sphere, color='green')
         # Then add the marker line
-        marker = pv.Line((x, y, height), (x, y, height + 1))
-        plotter.add_mesh(marker, color='blue', line_width=2)
+        marker = pv.Line((x, y, height), (x, y, height + 10))
+        plotter.add_mesh(marker, color='blue', line_width=3)
         print(f"100m marker at ({x}, {y}): ground height = {height}")
     
     # Add 1km reference markers
-    for x, y in [(1000, 0), (-1000, 0), (0, 1000), (0, -1000)]:
+    for x, y in [(1000, 0), (-1000, 0), (0, 1000), (0, -1000)]:  # These are now relative to (0,0)
         height = get_ground_height(x, y)
         # Create a small sphere at the intersection point
-        sphere = pv.Sphere(radius=10, center=(x, y, height))
+        sphere = pv.Sphere(radius=10, center=np.array([x, y, height]))
         plotter.add_mesh(sphere, color='green')
         # Then add the marker line
         marker = pv.Line((x, y, height), (x, y, height + 100))
-        plotter.add_mesh(marker, color='red', line_width=2)
+        plotter.add_mesh(marker, color='red', line_width=3)
         print(f"1km marker at ({x}, {y}): ground height = {height}")
     
-    # Add a reference plane at observer height that covers the entire terrain
-    x_range = vertices[:, 0].max() - vertices[:, 0].min()
-    y_range = vertices[:, 1].max() - vertices[:, 1].min()
-    plane = pv.Plane(center=(0, 0, center_height + eye_height), 
-                    direction=(0, 0, 1),  # Normal pointing up
-                    i_size=x_range,  # Match terrain width
-                    j_size=y_range)  # Match terrain length
-    plotter.add_mesh(plane, color='yellow', opacity=0.3)
-    
-    # Set up camera
+    # Set up camera for first-person view
     camera = plotter.camera
     camera.position = observer_position
-    camera.focal_point = (0, 0, center_height + eye_height)
-    camera.up = (0, 0, 1)  # Z is up
+    camera.focal_point = (0, 100, center_height + eye_height)  # Look north by default
+    camera.up = (0, 0, 1)  # Keep Z up
     
-    # Use trackball style for first-person view
-    plotter.enable_trackball_style()  # Changed from terrain_style to trackball_style
+    # Set up first-person style controls
+    plotter.enable_trackball_style()
+    
+    # Lock the camera's position relative to the ground
+    plotter.camera_set = True
+    plotter.camera.elevation = 0  # Start looking straight ahead
+    plotter.camera.roll = 0      # Keep horizon level
     
     def on_key_press():
         plotter.close()
@@ -164,8 +168,8 @@ def launch_interactive_viewer(mesh, initial_position=None, initial_target=None, 
     
     print("\nControls:")
     print("Left mouse: Look around")
-    print("Right mouse: Pan")
-    print("Mouse wheel: Move forward/backward")
+    print("Right mouse: Move forward/backward")
+    print("Mouse wheel: Zoom")
     print("Press 'Q' to exit")
     
     plotter.show()
