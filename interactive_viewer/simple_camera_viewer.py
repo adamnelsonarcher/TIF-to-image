@@ -5,13 +5,16 @@ from panda3d.core import GeomVertexFormat, GeomVertexData, GeomVertexWriter
 from panda3d.core import Geom, GeomLines, GeomNode, GeomTriangles
 from panda3d.core import TextNode, CollisionTraverser, CollisionNode
 from panda3d.core import CollisionRay, CollisionHandlerQueue, BitMask32
-from panda3d.core import CollisionPolygon
+from panda3d.core import CollisionPolygon, Texture, CardMaker
 from direct.gui.OnscreenText import OnscreenText
 import math
 import random
 import numpy as np
 import rasterio
 import os
+import matplotlib.pyplot as plt
+import io
+from PIL import Image
 
 class SimpleCameraViewer(ShowBase):
     def __init__(self, create_default_terrain=True, dem_data=None, pixel_size=None):
@@ -73,6 +76,10 @@ class SimpleCameraViewer(ShowBase):
         
         # Set up controls
         self.setup_controls()
+        
+        # Create minimap after terrain is created
+        if self.dem_data is not None:
+            self.create_minimap()
         
     def create_terrain(self):
         """
@@ -426,6 +433,95 @@ class SimpleCameraViewer(ShowBase):
         ground_z = self.find_ground_height(x, y)
         self.camera.setPos(x, y, ground_z + self.eye_height)
         print(f"Setting initial position: ({x}, {y}, {ground_z + self.eye_height})")
+
+    def create_minimap(self):
+        """Create a minimap display in the bottom-right corner showing full DEM and current slice"""
+        try:
+            # Load the full DEM
+            dem_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'dem_data.tif')
+            with rasterio.open(dem_file) as dem_dataset:
+                full_dem = dem_dataset.read(1)
+                
+                # Calculate slice coordinates in the full DEM
+                total_length = 17000  # 17km in meters
+                pixel_size = total_length / full_dem.shape[0]
+                center_row = full_dem.shape[0] // 2
+                center_col = full_dem.shape[1] // 2
+                slice_size = int(4000 / pixel_size)  # 4km slice (2km each direction)
+                slice_start_row = center_row - slice_size//2
+                slice_start_col = center_col - slice_size//2
+                
+                # Create matplotlib figure
+                plt.figure(figsize=(4, 4))
+                
+                # Plot full DEM (flipped vertically)
+                plt.imshow(np.flipud(full_dem), cmap='terrain', extent=[0, full_dem.shape[1], 0, full_dem.shape[0]])
+                plt.colorbar(label='Elevation (m)')
+                
+                # Draw rectangle around our slice
+                rect = plt.Rectangle(
+                    (slice_start_col, full_dem.shape[0] - (slice_start_row + slice_size)),  # Adjusted for flipped coordinates
+                    slice_size, slice_size,
+                    fill=False, color='red', linewidth=2
+                )
+                plt.gca().add_patch(rect)
+                
+                plt.title('DEM Elevation')
+                
+                # Save plot to a buffer
+                buf = io.BytesIO()
+                plt.savefig(buf, format='png', bbox_inches='tight')
+                plt.close()
+                buf.seek(0)
+                
+                # Convert to PIL Image and then to Panda3D texture
+                image = Image.open(buf)
+                
+                # Create texture
+                tex = Texture()
+                tex.setup2dTexture(image.width, image.height, Texture.TUnsignedByte, Texture.FRgba8)
+                tex.setRamImage(image.tobytes())
+                
+                # Create card for minimap
+                cm = CardMaker('minimap')
+                cm.setFrame(-0.95, -0.55, -0.95, -0.55)  # Position in bottom-right corner
+                
+                # Create and attach minimap to render2d (2D overlay)
+                minimap = self.render2d.attachNewNode(cm.generate())
+                minimap.setTexture(tex)
+                
+                # Add player position indicator (a small dot)
+                self.position_indicator = self.render2d.attachNewNode(cm.generate())
+                self.position_indicator.setScale(0.01)  # Small dot
+                self.position_indicator.setColor(1, 0, 0, 1)  # Red dot
+                
+                # Update position indicator in move task
+                self.taskMgr.add(self.updateMinimapTask, 'updateMinimap')
+                
+        except Exception as e:
+            print(f"Error creating minimap: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def updateMinimapTask(self, task):
+        """Update the position indicator on the minimap"""
+        if hasattr(self, 'position_indicator'):
+            # Convert world position to minimap coordinates
+            pos = self.camera.getPos()
+            map_width = self.dem_data.shape[1] * self.pixel_size
+            map_height = self.dem_data.shape[0] * self.pixel_size
+            
+            # Calculate normalized position (0 to 1)
+            x = (pos.x + map_width/2) / map_width
+            y = (pos.y + map_height/2) / map_height
+            
+            # Convert to screen coordinates
+            screen_x = -0.95 + (0.4 * x)  # Adjust based on minimap position/size
+            screen_y = -0.95 + (0.4 * y)
+            
+            self.position_indicator.setPos(screen_x, 0, screen_y)
+        
+        return Task.cont
 
 def main():
     try:
