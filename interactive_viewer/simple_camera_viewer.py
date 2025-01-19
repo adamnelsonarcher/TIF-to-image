@@ -124,26 +124,44 @@ class SimpleCameraViewer(ShowBase):
         vertex.addData3(0, 0, -10)  # Bottom
         vertex.addData3(0, 0, 10)   # Top
         
-        # 100m reference lines
-        distance = 100
-        # North line
-        vertex.addData3(0, distance, 0)
-        vertex.addData3(0, distance, 5)
-        # South line
-        vertex.addData3(0, -distance, 0)
-        vertex.addData3(0, -distance, 5)
-        # East line
-        vertex.addData3(distance, 0, 0)
-        vertex.addData3(distance, 0, 5)
-        # West line
-        vertex.addData3(-distance, 0, 0)
-        vertex.addData3(-distance, 0, 5)
+        # 20m reference lines
+        distance = 20
+        height = 1.0  # 1 meter tall markers
+        
+        # Get ground heights at each marker position
+        positions = [
+            (0, distance),    # North
+            (0, -distance),   # South
+            (distance, 0),    # East
+            (-distance, 0),   # West
+        ]
+        
+        # Check ground height at each position
+        for x, y in positions:
+            # Set up collision ray
+            self.groundRay.setOrigin(Point3(x, y, 1000))
+            self.groundRay.setDirection(Vec3(0, 0, -1))
+            self.cTrav.traverse(self.render)
+            
+            # Get ground height
+            ground_z = 0
+            entries = []
+            for i in range(self.groundHandler.getNumEntries()):
+                entry = self.groundHandler.getEntry(i)
+                entries.append(entry)
+            if entries:
+                entries.sort(key=lambda x: x.getSurfacePoint(self.render).getZ())
+                ground_z = entries[-1].getSurfacePoint(self.render).getZ()
+            
+            # Add vertices for this marker
+            vertex.addData3(x, y, ground_z)          # Bottom
+            vertex.addData3(x, y, ground_z + height) # Top
         
         # Create lines geometry
         lines = GeomLines(Geom.UHStatic)
         # Origin line
         lines.addVertices(0, 1)
-        # Reference lines
+        # Reference lines (4 pairs of vertices after origin line)
         for i in range(2, 9, 2):
             lines.addVertices(i, i+1)
         
