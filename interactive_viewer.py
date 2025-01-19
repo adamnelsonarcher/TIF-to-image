@@ -4,18 +4,72 @@ import rasterio
 from dem_to_mesh import create_mesh_from_dem
 from classify_terrain import classify_and_color_mesh
 
-def launch_interactive_viewer(mesh, initial_position=None, initial_target=None, full_dem=None, window_bounds=None):
+def launch_interactive_viewer(mesh, initial_position=None, initial_target=None, full_dem=None, window_bounds=None, dem_length_km=None):
     print("\n=== Launching Interactive Viewer ===")
+    
+    # Create a second window for the minimap using matplotlib
+    if full_dem is not None and window_bounds is not None:
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Rectangle, Circle
+        
+        plt.figure(figsize=(8, 8))
+        plt.imshow(full_dem, cmap='gray')
+        
+        # Draw rectangle around current view window
+        x_min, x_max, y_min, y_max = window_bounds
+        window_size = x_max - x_min  # Calculate window size from bounds
+        rect = Rectangle((x_min, y_min), 
+                        window_size, 
+                        window_size,
+                        fill=False, 
+                        color='red', 
+                        linewidth=2,
+                        label='Current View (4km x 4km)')
+        plt.gca().add_patch(rect)
+        
+        # Add observer position (center of view window)
+        observer_x = (x_min + x_max) / 2
+        observer_y = (y_min + y_max) / 2
+        observer = Circle((observer_x, observer_y), 
+                         radius=window_size/50,  # Adjust size for visibility
+                         color='blue',
+                         fill=True,
+                         label='Observer Position')
+        plt.gca().add_patch(observer)
+        
+        # Add 1km marker points
+        marker_size = window_size/50
+        km_markers = []
+        for dx, dy in [(window_size/4, 0), (-window_size/4, 0), (0, window_size/4), (0, -window_size/4)]:
+            marker = Circle((observer_x + dx, observer_y + dy),
+                          radius=marker_size,
+                          color='red',
+                          fill=True)
+            plt.gca().add_patch(marker)
+            km_markers.append(marker)
+        
+        plt.title('DEM Overview\nRed box shows current view (4km x 4km)\nBlue dot is observer position\nRed dots mark 1km distances', 
+                 pad=20)
+        
+        # Add scale bar at bottom
+        if dem_length_km is not None:
+            plt.text(full_dem.shape[1]/2, full_dem.shape[0] * 1.1,
+                    f'Total DEM width: {dem_length_km:.1f}km',
+                    ha='center', va='bottom', color='black')
+        
+        plt.legend()
+        plt.axis('off')  # Turn off all axes and grid
+        plt.show(block=False)
     
     # Convert Open3D mesh to PyVista
     vertices = np.asarray(mesh.vertices)
     triangles = np.asarray(mesh.triangles)
     colors = np.asarray(mesh.vertex_colors)
     
-    # Center the vertices around origin and flip Z axis
+    # Center the vertices around origin and invert Z axis
     center_offset = np.mean(vertices, axis=0)
     vertices = vertices - center_offset
-    vertices[:, 2] = -vertices[:, 2]  # Flip Z coordinates
+    vertices[:, 2] = -vertices[:, 2]  # Invert Z coordinates of the mesh
     
     print("\nMesh Statistics:")
     print(f"Original center: {center_offset}")
@@ -28,46 +82,80 @@ def launch_interactive_viewer(mesh, initial_position=None, initial_target=None, 
     if colors is not None:
         print(f"Color range: {colors.min():.2f} to {colors.max():.2f}")
     
-    # Create PyVista mesh with centered vertices
+    # Create PyVista mesh with inverted vertices
     faces = np.column_stack((np.full(len(triangles), 3), triangles))
     pv_mesh = pv.PolyData(vertices, faces)
     
-    # Create plotter with specific parameters and subplot
+    # Create plotter with specific parameters
     plotter = pv.Plotter()
     plotter.set_background('black')
     
-    # Main view (larger)
+    # Add mesh with simpler parameters first
     plotter.add_mesh(pv_mesh, 
                     color='gray',
                     show_edges=True,
                     lighting=True,
                     opacity=1.0)
     
-    # Find ground height at center before adding markers
-    center_point = np.array([0, 0, 0])
-    closest_point_id = pv_mesh.find_closest_point(center_point)
-    ground_height = vertices[closest_point_id][2]
-    print(f"\nGround height at center: {ground_height}")
+    # Function to get height at any (x,y) coordinate by casting a ray down
+    def get_ground_height(x, y):
+        start_point = np.array([x, y, 2000])  # Start high above terrain
+        end_point = np.array([x, y, -2000])   # End below terrain
+        intersection = pv_mesh.ray_trace(start_point, end_point)
+        
+        if len(intersection) > 0:
+            # intersection[0] is the points array, and we want the first point's Z coordinate
+            height = intersection[0][0][2]  # Get Z coordinate from the first intersection point
+            print(f"Finding height at ({x}, {y}): intersection at z = {height}")
+            return height
+        else:
+            print(f"Warning: No intersection found at ({x}, {y})")
+            return 0
     
-    # Add reference markers to main view
-    z_min = vertices[:, 2].min() - 100
-    z_max = vertices[:, 2].max() + 100
+    # Place observer at center
+    center_height = get_ground_height(0, 0)
+    eye_height = 1.7  # meters
+    observer_position = (0, -100, center_height + eye_height)
     
-    center_line = pv.Line((0, 0, z_min), (0, 0, z_max))
-    plotter.add_mesh(center_line, color='blue', line_width=2)
+    # Add 100m reference markers
+    for x, y in [(100, 0), (-100, 0), (0, 100), (0, -100)]:
+        height = get_ground_height(x, y)
+        # Create a small sphere at the intersection point
+        sphere = pv.Sphere(radius=1, center=np.array([x, y, height]))  # Use numpy array for center
+        plotter.add_mesh(sphere, color='green')
+        # Then add the marker line
+        marker = pv.Line((x, y, height), (x, y, height + 1))
+        plotter.add_mesh(marker, color='blue', line_width=2)
+        print(f"100m marker at ({x}, {y}): ground height = {height}")
     
+    # Add 1km reference markers
     for x, y in [(1000, 0), (-1000, 0), (0, 1000), (0, -1000)]:
-        marker = pv.Line((x, y, z_min), (x, y, z_max))
+        height = get_ground_height(x, y)
+        # Create a small sphere at the intersection point
+        sphere = pv.Sphere(radius=10, center=(x, y, height))
+        plotter.add_mesh(sphere, color='green')
+        # Then add the marker line
+        marker = pv.Line((x, y, height), (x, y, height + 100))
         plotter.add_mesh(marker, color='red', line_width=2)
+        print(f"1km marker at ({x}, {y}): ground height = {height}")
     
-    # Set up main camera
+    # Add a reference plane at observer height that covers the entire terrain
+    x_range = vertices[:, 0].max() - vertices[:, 0].min()
+    y_range = vertices[:, 1].max() - vertices[:, 1].min()
+    plane = pv.Plane(center=(0, 0, center_height + eye_height), 
+                    direction=(0, 0, 1),  # Normal pointing up
+                    i_size=x_range,  # Match terrain width
+                    j_size=y_range)  # Match terrain length
+    plotter.add_mesh(plane, color='yellow', opacity=0.3)
+    
+    # Set up camera
     camera = plotter.camera
-    camera.position = (0, -100, ground_height + 2)
-    camera.focal_point = (0, 0, ground_height + 2)
-    camera.up = (0, 0, 1)
+    camera.position = observer_position
+    camera.focal_point = (0, 0, center_height + eye_height)
+    camera.up = (0, 0, 1)  # Z is up
     
-    # Enable terrain interaction style
-    plotter.enable_terrain_style()
+    # Use trackball style for first-person view
+    plotter.enable_trackball_style()  # Changed from terrain_style to trackball_style
     
     def on_key_press():
         plotter.close()
@@ -77,7 +165,7 @@ def launch_interactive_viewer(mesh, initial_position=None, initial_target=None, 
     print("\nControls:")
     print("Left mouse: Look around")
     print("Right mouse: Pan")
-    print("Mouse wheel: Zoom")
+    print("Mouse wheel: Move forward/backward")
     print("Press 'Q' to exit")
     
     plotter.show()
@@ -147,8 +235,11 @@ def main():
         mesh = create_mesh_from_dem(dem_data, transform)
         mesh = classify_and_color_mesh(mesh)
         
-        # Launch viewer with full DEM and window bounds
-        launch_interactive_viewer(mesh, full_dem=full_dem, window_bounds=window_bounds)
+        # Launch viewer with full DEM, window bounds, and DEM length
+        launch_interactive_viewer(mesh, 
+                                   full_dem=full_dem, 
+                                   window_bounds=window_bounds,
+                                   dem_length_km=manual_length_km)
         
     except Exception as e:
         print(f"\nAn error occurred: {str(e)}")
