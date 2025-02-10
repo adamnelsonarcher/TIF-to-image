@@ -81,6 +81,12 @@ class SimpleCameraViewer(ShowBase):
         if self.dem_data is not None:
             self.create_minimap()
         
+        # Create scale cube
+        self.create_scale_cube()
+        
+        # Create observer marker
+        self.create_observer_marker()
+        
     def create_terrain(self):
         """
         This method is meant to be overridden by subclasses.
@@ -200,6 +206,13 @@ class SimpleCameraViewer(ShowBase):
                     terrainCol.addSolid(CollisionPolygon(v1, v3, v2))
             
             print("Terrain collision setup complete")
+            
+            terrain_width = self.dem_data.shape[1] * self.pixel_size
+            terrain_depth = self.dem_data.shape[0] * self.pixel_size
+            
+            print(f"Calculated terrain width: {terrain_width:.1f}m")
+            print(f"Calculated terrain depth: {terrain_depth:.1f}m")
+            print(f"Expected terrain size from DEM: {self.dem_data.shape[1]*self.pixel_size:.1f}m x {self.dem_data.shape[0]*self.pixel_size:.1f}m")
         
     def create_reference_lines(self):
         # Create vertex data
@@ -207,60 +220,65 @@ class SimpleCameraViewer(ShowBase):
         vdata = GeomVertexData('lines', format, Geom.UHStatic)
         vertex = GeomVertexWriter(vdata, 'vertex')
         
-        # Origin vertical line
-        vertex.addData3(0, 0, -10)  # Bottom
-        vertex.addData3(0, 0, 10)   # Top
+        # Get ground elevation at origin
+        ground_z = self.find_ground_height(0, 0)
         
-        # 100m reference lines
-        distance = 100  # Distance from center
-        height = 100.0  # 100 meter tall markers
+        # Create grid lines every 1000 meters
+        grid_spacing = 1000  # meters
+        terrain_width = self.dem_data.shape[1] * self.pixel_size
+        terrain_depth = self.dem_data.shape[0] * self.pixel_size
         
-        # Get ground heights at each marker position
-        positions = [
-            (0, distance),    # North
-            (0, -distance),   # South
-            (distance, 0),    # East
-            (-distance, 0),   # West
-        ]
+        # Calculate grid bounds using actual terrain elevation
+        x_min = -terrain_width/2
+        x_max = terrain_width/2
+        y_min = -terrain_depth/2
+        y_max = terrain_depth/2
         
-        # Check ground height at each position
-        for x, y in positions:
-            ground_z = self.find_ground_height(x, y)
-            # Add vertices for this marker
-            vertex.addData3(x, y, ground_z)          # Bottom
-            vertex.addData3(x, y, ground_z + height) # Top
+        # Create grid lines at ground level
+        for x in np.arange(x_min, x_max, grid_spacing):
+            vertex.addData3(x, y_min, ground_z)
+            vertex.addData3(x, y_max, ground_z)
+            
+        for y in np.arange(y_min, y_max, grid_spacing):
+            vertex.addData3(x_min, y, ground_z)
+            vertex.addData3(x_max, y, ground_z)
         
         # Create lines geometry
         lines = GeomLines(Geom.UHStatic)
-        # Origin line
-        lines.addVertices(0, 1)
-        # Reference lines (4 pairs of vertices after origin line)
-        for i in range(2, 9, 2):
+        for i in range(0, vdata.getNumRows(), 2):
             lines.addVertices(i, i+1)
         
         # Create and attach geometry
         geom = Geom(vdata)
         geom.addPrimitive(lines)
-        node = GeomNode('reference_lines')
+        node = GeomNode('reference_grid')
         node.addGeom(geom)
-        line_np = self.render.attachNewNode(node)
-        line_np.setColor(1, 0, 0, 1)  # Red color
+        grid_np = self.render.attachNewNode(node)
+        grid_np.setColor(0, 1, 0, 0.7)  # Brighter green
         
     def camera_setup(self):
         # Set up first-person camera
         self.eye_height = 1.7  # Eye height in meters
         
+        # Get ground elevation at origin
+        ground_z = self.find_ground_height(0, 0)
+        
         # Initialize camera angles
         self.camH = 180  # Start facing -Y (north)
         self.camP = 0    # Level view
         
-        # Position camera
-        self.camera.setPos(0, 0, self.eye_height)
+        # Position camera 1.7m above ground
+        self.camera.setPos(0, 0, ground_z + self.eye_height)
         self.camera.setH(self.camH)
         self.camera.setP(self.camP)
         
         # Disable default mouse control
         self.disableMouse()
+        
+        # Validate starting position
+        terrain_width = self.dem_data.shape[1] * self.pixel_size
+        if abs(self.camera.getX()) > terrain_width/2 or abs(self.camera.getY()) > terrain_width/2:
+            print(f"WARNING: Camera starting position outside expected terrain bounds!")
         
     def setup_controls(self):
         # Movement controls
@@ -408,8 +426,8 @@ class SimpleCameraViewer(ShowBase):
     def find_ground_height(self, x, y):
         """Find the ground height at a given x,y position"""
         # Start ray from high above to ensure we catch the ground
-        self.groundRay.setOrigin(Point3(x, y, 10000))
-        self.groundRay.setDirection(Vec3(0, 0, -1))
+        self.groundRay.setOrigin(0, 0, 10000)  # Start ray above terrain
+        self.groundRay.setDirection(Vec3(0, 0, -1))  # Shoot downward
         
         # Traverse the collision system
         self.cTrav.traverse(self.render)
@@ -520,6 +538,136 @@ class SimpleCameraViewer(ShowBase):
             screen_y = -0.95 + (0.4 * y)
             
             self.position_indicator.setPos(screen_x, 0, screen_y)
+        
+        return Task.cont
+
+    def create_scale_cube(self):
+        # Get ground elevation at origin
+        ground_z = self.find_ground_height(0, 0)
+        
+        # 100m reference cube placed 50m above ground
+        cube_z = ground_z + 50
+        size = 100  # Cube size in meters
+        
+        # Create cube geometry
+        cube_format = GeomVertexFormat.getV3()
+        cube_vdata = GeomVertexData('cube', cube_format, Geom.UHStatic)
+        vertex = GeomVertexWriter(cube_vdata, 'vertex')
+        
+        # Define cube vertices relative to ground elevation
+        vertices = [
+            (-size, -size, cube_z), (size, -size, cube_z),
+            (size, size, cube_z), (-size, size, cube_z),
+            (-size, -size, cube_z + size), (size, -size, cube_z + size),
+            (size, size, cube_z + size), (-size, size, cube_z + size)
+        ]
+        
+        for v in vertices:
+            vertex.addData3(v)
+        
+        # Create triangles
+        tris = GeomTriangles(Geom.UHStatic)
+        indices = [0,1,2, 0,2,3, 4,5,6, 4,6,7, 0,4,5, 0,5,1,
+                   1,5,6, 1,6,2, 2,6,7, 2,7,3, 3,7,4, 3,4,0]
+        
+        for i in indices:
+            tris.addVertex(i)
+        
+        # Create and position cube
+        geom = Geom(cube_vdata)
+        geom.addPrimitive(tris)
+        node = GeomNode('scale_cube')
+        node.addGeom(geom)
+        cube_np = self.render.attachNewNode(node)
+        cube_np.setColor(1, 0, 0, 0.9)  # Bright red
+        cube_np.setPos(0, 0, 50)  # 50m elevation above ground
+
+    def create_observer_marker(self):
+        """Create a 1m radius circle around the observer's position"""
+        marker_format = GeomVertexFormat.getV3()
+        marker_vdata = GeomVertexData('marker', marker_format, Geom.UHStatic)
+        vertex = GeomVertexWriter(marker_vdata, 'vertex')
+        
+        # Create circle with 1m radius (36 segments)
+        segments = 36
+        radius = 1.0  # meters
+        for i in range(segments):
+            angle = i * (2 * math.pi / segments)
+            x = radius * math.cos(angle)
+            y = radius * math.sin(angle)
+            vertex.addData3(x, y, 0)
+        
+        # Create line loop
+        lines = GeomLines(Geom.UHStatic)
+        for i in range(segments):
+            lines.addVertices(i, (i+1) % segments)
+        
+        # Create geometry
+        geom = Geom(marker_vdata)
+        geom.addPrimitive(lines)
+        node = GeomNode('observer_marker')
+        node.addGeom(geom)
+        
+        # Attach to camera and position at feet level
+        marker_np = self.camera.attachNewNode(node)
+        marker_np.setZ(-self.eye_height)  # Position at ground level
+        marker_np.setColor(0, 1, 1, 0.7)  # Cyan color with transparency
+        marker_np.setRenderModeThickness(2)  # Thicker lines
+
+    def save_top_down_view(self):
+        # Get camera's current state
+        original_pos = self.camera.getPos()
+        original_hpr = self.camera.getHpr()
+        
+        # Move camera to top-down view
+        self.camera.setPos(0, 0, 10000)  # 10km altitude
+        self.camera.lookAt(0, 0, 0)
+        
+        # Save screenshot
+        self.screenshot("top_down_view.png")
+        
+        # Restore camera
+        self.camera.setPos(original_pos)
+        self.camera.setHpr(original_hpr)
+
+    def update_camera(self, task):
+        # Get time since last update
+        dt = globalClock.getDt()
+        
+        # Calculate movement direction in world space
+        heading_rad = math.radians(self.camH)
+        move_vec = Vec3(
+            math.sin(heading_rad) * self.move_speed * dt,
+            math.cos(heading_rad) * self.move_speed * dt,
+            0
+        )
+        
+        # Get current position
+        old_pos = self.camera.getPos()
+        
+        # Apply movement
+        if self.keyMap["forward"]:
+            new_pos = old_pos + move_vec
+        if self.keyMap["backward"]:
+            new_pos = old_pos - move_vec
+        # ... (keep other movement code the same)
+        
+        # Update collision ray to always point straight down in WORLD space
+        self.groundRay.setOrigin(new_pos)
+        self.groundRay.setDirection(Vec3(0, 0, -1))  # Always down in world space
+        
+        # Process collisions
+        self.cTrav.traverse(self.render)
+        if self.groundHandler.getNumEntries() > 0:
+            entry = self.groundHandler.getEntry(0)
+            ground_z = entry.getSurfacePoint(entry.getIntoNodePath()).z
+            new_pos.z = ground_z + self.eye_height  # Maintain eye height
+        else:
+            # Preserve Z position if no ground detected
+            new_pos.z = old_pos.z
+        
+        # Apply final position
+        self.camera.setPos(new_pos)
         
         return Task.cont
 

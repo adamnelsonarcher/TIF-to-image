@@ -1,0 +1,9 @@
+panda3d
+numpy
+matplotlib>=3.4.0
+rasterio>=1.2.0
+Pillow>=8.0.0
+open3d>=0.13.0
+pyrender>=0.1.45
+trimesh>=3.9.0
+imageio>=2.9.0 
