@@ -7,6 +7,8 @@ from direct.gui.OnscreenText import OnscreenText
 import math
 import os
 from panda3d.core import GeomVertexFormat, GeomVertexData, Geom, GeomLines, GeomVertexWriter, GeomNode, GeomTriangles
+from panda3d.core import Shader, GraphicsOutput, GraphicsEngine, FrameBufferProperties
+from panda3d.core import WindowProperties, GraphicsPipe, Texture
 
 class WorldViewer(ShowBase):
     def __init__(self):
@@ -47,10 +49,10 @@ class WorldViewer(ShowBase):
         alnp = self.render.attachNewNode(alight)
         self.render.setLight(alnp)
         
-        # Create ground and terrain
+        # Create ground and terrain first (so height_at is available)
         self.create_ground()
         
-        # Create player model (simple box for now)
+        # Then create player at proper height
         self.create_player()
         
         # Set up camera
@@ -74,38 +76,40 @@ class WorldViewer(ShowBase):
         
         # Add reference objects
         self.create_reference_objects()
+        
+        # Add after other initializations
+        self.setup_depth_buffer()
     
     def create_ground(self):
         # Create terrain mesh
         terrain_node = self.create_terrain_mesh()
         self.terrain = self.render.attachNewNode(terrain_node)
         self.terrain.setColor(0.3, 0.6, 0.3)  # Green color
-        self.terrain.setCollideMask(BitMask32.bit(1))  # Make terrain collidable
+        self.terrain.setCollideMask(BitMask32.bit(1))
         
-        # Create grid lines
+        # Create grid lines using the same height function
         format = GeomVertexFormat.getV3()
         vdata = GeomVertexData('grid', format, Geom.UHStatic)
         vertex = GeomVertexWriter(vdata, 'vertex')
         
-        # Create grid lines every 5 meters
-        grid_size = 100  # 100x100 meter grid
-        spacing = 5      # 5 meter spacing
+        grid_size = 500  # Increased from 100
+        spacing = 10     # Increased from 5
         
         # Create lines following terrain
         for i in range(-grid_size, grid_size + spacing, spacing):
             # X lines
             for y in range(-grid_size, grid_size + spacing, spacing):
                 x = i
-                z1 = (math.sin(x * 0.05) + math.sin(y * 0.05)) * 2 + 0.01
-                z2 = (math.sin(x * 0.05) + math.sin((y + spacing) * 0.05)) * 2 + 0.01
+                z1 = self.height_at(x, y) + 0.01
+                z2 = self.height_at(x, y + spacing) + 0.01
                 vertex.addData3(x, y, z1)
                 vertex.addData3(x, y + spacing, z2)
             
             # Y lines
             for x in range(-grid_size, grid_size + spacing, spacing):
                 y = i
-                z1 = (math.sin(x * 0.05) + math.sin(y * 0.05)) * 2 + 0.01
-                z2 = (math.sin((x + spacing) * 0.05) + math.sin(y * 0.05)) * 2 + 0.01
+                z1 = self.height_at(x, y) + 0.01
+                z2 = self.height_at(x + spacing, y) + 0.01
                 vertex.addData3(x, y, z1)
                 vertex.addData3(x + spacing, y, z2)
         
@@ -114,13 +118,12 @@ class WorldViewer(ShowBase):
         for i in range(0, vdata.getNumRows(), 2):
             lines.addVertices(i, i+1)
         
-        # Create and attach geometry
         geom = Geom(vdata)
         geom.addPrimitive(lines)
         node = GeomNode('grid')
         node.addGeom(geom)
         grid_np = self.render.attachNewNode(node)
-        grid_np.setColor(0.2, 0.2, 0.2, 1)  # Dark gray lines
+        grid_np.setColor(0.2, 0.2, 0.2, 1)
         
     def create_player(self):
         # Create a simple box for the player
@@ -172,7 +175,23 @@ class WorldViewer(ShowBase):
         node.addGeom(geom)
         self.player = self.render.attachNewNode(node)
         self.player.setColor(0.8, 0.2, 0.2)  # Red color
-        self.player.setPos(0, 0, 0)  # Start at ground level
+        
+        # Start at origin but get proper height
+        initial_x = 0
+        initial_y = 0
+        
+        # Use collision detection to find ground height
+        self.groundRay.setOrigin(Point3(initial_x, initial_y, 1000))
+        self.groundRay.setDirection(Vec3(0, 0, -1))
+        self.cTrav.traverse(self.render)
+        
+        if self.groundHandler.getNumEntries() > 0:
+            entry = self.groundHandler.getEntry(0)
+            initial_z = entry.getSurfacePoint(entry.getIntoNodePath()).z
+        else:
+            initial_z = 0  # Fallback
+        
+        self.player.setPos(initial_x, initial_y, initial_z)
         
         # Add direction indicator (a thick line pointing forward)
         format = GeomVertexFormat.getV3()
@@ -291,7 +310,6 @@ class WorldViewer(ShowBase):
         dt = globalClock.getDt()
         speed = 5.0
         turn_speed = 100.0
-        pitch_speed = 50.0
         
         # Update actor rotation
         if self.keyMap["turn_left"]:
@@ -304,12 +322,6 @@ class WorldViewer(ShowBase):
         
         # Update actor model rotation
         self.player.setH(self.actorH)
-        
-        # Add after the actor rotation code but before movement calculation
-        if self.keyMap["cam_up"]:
-            self.camP = max(self.camP - pitch_speed * dt, -85)
-        if self.keyMap["cam_down"]:
-            self.camP = min(self.camP + pitch_speed * dt, 85)
         
         # Calculate movement direction relative to actor orientation
         heading_rad = math.radians(self.actorH)
@@ -330,7 +342,7 @@ class WorldViewer(ShowBase):
             new_pos = self.player.getPos() + move_vec
             
             # Update ground ray from high above current position
-            self.groundRay.setOrigin(Point3(new_pos.x, new_pos.y, 100))
+            self.groundRay.setOrigin(Point3(new_pos.x, new_pos.y, 1000))  # Start from high up
             self.groundRay.setDirection(Vec3(0, 0, -1))
             
             # Process collisions
@@ -363,10 +375,25 @@ class WorldViewer(ShowBase):
         self.camera.setPos(actor_pos.getX(), actor_pos.getY(), actor_pos.getZ() + 1.7)
         self.camera.setHpr(self.actorH, 0, 0)
         
-        # Take screenshot and record metadata
+        # Also move depth camera
+        self.depthCam.setPos(self.camera.getPos())
+        self.depthCam.setHpr(self.camera.getHpr())
+        
+        # Take regular screenshot
         base.graphicsEngine.renderFrame()
         filename = os.path.join(self.screenshot_dir, f"screenshot_{self.screenshot_count}.jpg")
         self.screenshot(filename, defaultFilename=False)
+        
+        # Apply depth shader for depth map
+        self.render.setShader(self.depth_shader)
+        base.graphicsEngine.renderFrame()  # Render with depth shader
+        
+        # Take depth screenshot
+        depth_filename = os.path.join(self.screenshot_dir, f"depth_{self.screenshot_count}.jpg")
+        self.depthTex.write(depth_filename)
+        
+        # Remove depth shader
+        self.render.clearShader()
         
         # Print photo metadata
         pos = self.player.getPos()
@@ -374,10 +401,11 @@ class WorldViewer(ShowBase):
         print(f"Position: ({pos.x:.1f}, {pos.y:.1f}, {pos.z:.1f})")
         print(f"Heading: {self.actorH:.1f}°")
         print(f"Saved as: {filename}")
+        print(f"Depth map saved as: {depth_filename}")
         
         self.screenshot_count += 1
         
-        # Restore observer camera
+        # Restore camera positions
         self.camera.setPos(original_pos)
         self.camera.setHpr(original_hpr)
     
@@ -434,23 +462,42 @@ class WorldViewer(ShowBase):
         markers_1km = self.render.attachNewNode(node)
         markers_1km.setColor(0, 0, 1, 1)  # Blue markers
 
-    def create_terrain_mesh(self, size=200, resolution=5):
+    def create_terrain_mesh(self, size=2000, resolution=10):
         format = GeomVertexFormat.getV3n3()
         vdata = GeomVertexData('terrain', format, Geom.UHStatic)
         vertex = GeomVertexWriter(vdata, 'vertex')
         normal = GeomVertexWriter(vdata, 'normal')
         
+        def height_at(x, y):
+            # Near terrain - gentle hills (2m height)
+            near = (math.sin(x * 0.05) + math.sin(y * 0.05)) * 2
+            
+            # Mid-distance mountains (10m height)
+            mid = (math.sin(x * 0.02 + 1.3) + math.sin(y * 0.02 + 0.7)) * 10
+            
+            # Distant mountains (25m height)
+            far = (math.sin(x * 0.01 + 2.4) + math.sin(y * 0.01 + 1.8)) * 25
+            
+            # Fade distances
+            dist = math.sqrt(x*x + y*y)
+            fade_near = max(0, 1 - dist/200)   # Fade near hills over 200m
+            fade_mid = max(0, 1 - dist/1000)   # Fade mid mountains over 1km
+            
+            return (near * fade_near) + (mid * fade_mid) + far
+        
+        # Store height_at function for use in other methods
+        self.height_at = height_at
+        
         # Create vertices with height variations
         for y in range(-size//2, size//2 + resolution, resolution):
             for x in range(-size//2, size//2 + resolution, resolution):
-                # Create gentle rolling hills using sine waves
-                z = (math.sin(x * 0.05) + math.sin(y * 0.05)) * 2  # 2m amplitude
+                # Get height at this point
+                z = height_at(x, y)
                 vertex.addData3(x, y, z)
                 
-                # Calculate normal vector for lighting
-                # Get approximate slopes using sine derivatives
-                dx = math.cos(x * 0.05) * 0.1  # partial derivative wrt x
-                dy = math.cos(y * 0.05) * 0.1  # partial derivative wrt y
+                # Calculate normal vector using central differences
+                dx = (height_at(x + resolution, y) - height_at(x - resolution, y)) / (2 * resolution)
+                dy = (height_at(x, y + resolution) - height_at(x, y - resolution)) / (2 * resolution)
                 normal_vec = Vec3(-dx, -dy, 1)
                 normal_vec.normalize()
                 normal.addData3(normal_vec.x, normal_vec.y, normal_vec.z)
@@ -503,6 +550,69 @@ class WorldViewer(ShowBase):
             self.lastMouseY = mouseY
             
         return Task.cont
+
+    def setup_depth_buffer(self):
+        # Create a buffer for depth rendering
+        winprops = WindowProperties.size(800, 600)
+        fbprops = FrameBufferProperties()
+        fbprops.setRgbColor(True)
+        fbprops.setDepthBits(24)
+        
+        self.depthBuffer = self.graphicsEngine.makeOutput(
+            self.pipe, "depth buffer", -2,
+            fbprops, winprops,
+            GraphicsPipe.BFRefuseWindow,
+            self.win.getGsg(), self.win
+        )
+        
+        # Create a camera for depth rendering
+        self.depthCam = self.makeCamera(self.depthBuffer)
+        self.depthCam.reparentTo(self.render)
+        
+        # Create and set the depth shader
+        shader_text = """
+void vshader(
+    float4 vtx_position : POSITION,
+    uniform float4x4 trans_model_to_clip : STATE,
+    out float4 l_position : POSITION,
+    out float l_depth : TEXCOORD0)
+{
+    l_position = mul(trans_model_to_clip, vtx_position);
+    // Pass actual distance to fragment shader
+    l_depth = length(vtx_position.xyz);
+}
+
+void fshader(
+    float l_depth : TEXCOORD0,
+    out float4 o_color : COLOR)
+{
+    // Use actual distance for depth calculation
+    float near = 1.0;
+    float far = 2000.0;  // Match our terrain size
+    float normalized_depth = (l_depth - near) / (far - near);
+    normalized_depth = saturate(normalized_depth);  // Clamp between 0 and 1
+    
+    // Invert so closer is whiter
+    o_color = float4(1.0 - normalized_depth, 1.0 - normalized_depth, 1.0 - normalized_depth, 1.0);
+}
+"""
+        self.depth_shader = Shader.make(shader_text, Shader.SL_Cg)
+        
+        # Create render texture
+        self.depthTex = Texture()
+        self.depthBuffer.addRenderTexture(
+            self.depthTex,
+            GraphicsOutput.RTMCopyRam,
+            GraphicsOutput.RTPColor
+        )
+        
+        # Set up depth camera state
+        depth_state = self.depthCam.node().getLens()
+        depth_state.setNear(1.0)
+        depth_state.setFar(2000.0)  # Match shader far distance
+        
+        # Set background color to black for depth camera
+        self.depthBuffer.setClearColor((0, 0, 0, 1))
 
 def main():
     app = WorldViewer()
