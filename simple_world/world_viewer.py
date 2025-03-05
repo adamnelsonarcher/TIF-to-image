@@ -91,14 +91,23 @@ class WorldViewer(ShowBase):
         grid_size = 100  # 100x100 meter grid
         spacing = 5      # 5 meter spacing
         
-        # Create lines
+        # Create lines following terrain
         for i in range(-grid_size, grid_size + spacing, spacing):
             # X lines
-            vertex.addData3(i, -grid_size, 0.01)
-            vertex.addData3(i, grid_size, 0.01)
+            for y in range(-grid_size, grid_size + spacing, spacing):
+                x = i
+                z1 = (math.sin(x * 0.05) + math.sin(y * 0.05)) * 2 + 0.01
+                z2 = (math.sin(x * 0.05) + math.sin((y + spacing) * 0.05)) * 2 + 0.01
+                vertex.addData3(x, y, z1)
+                vertex.addData3(x, y + spacing, z2)
+            
             # Y lines
-            vertex.addData3(-grid_size, i, 0.01)
-            vertex.addData3(grid_size, i, 0.01)
+            for x in range(-grid_size, grid_size + spacing, spacing):
+                y = i
+                z1 = (math.sin(x * 0.05) + math.sin(y * 0.05)) * 2 + 0.01
+                z2 = (math.sin((x + spacing) * 0.05) + math.sin(y * 0.05)) * 2 + 0.01
+                vertex.addData3(x, y, z1)
+                vertex.addData3(x + spacing, y, z2)
         
         # Create lines geometry
         lines = GeomLines(Geom.UHStatic)
@@ -436,15 +445,15 @@ class WorldViewer(ShowBase):
             for x in range(-size//2, size//2 + resolution, resolution):
                 # Create gentle rolling hills using sine waves
                 z = (math.sin(x * 0.05) + math.sin(y * 0.05)) * 2  # 2m amplitude
-                
                 vertex.addData3(x, y, z)
                 
-                # Calculate normal for lighting
-                # Get approximate slope using sine derivatives
+                # Calculate normal vector for lighting
+                # Get approximate slopes using sine derivatives
                 dx = math.cos(x * 0.05) * 0.1  # partial derivative wrt x
                 dy = math.cos(y * 0.05) * 0.1  # partial derivative wrt y
-                normal_vec = Vec3(-dx, -dy, 1).normalize()
-                normal.addData3(*normal_vec)
+                normal_vec = Vec3(-dx, -dy, 1)
+                normal_vec.normalize()
+                normal.addData3(normal_vec.x, normal_vec.y, normal_vec.z)
         
         # Create triangles
         tris = GeomTriangles(Geom.UHStatic)
